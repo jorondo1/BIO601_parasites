@@ -3,45 +3,6 @@ library(pacman); p_load(ape, tidyverse, magrittr, phyloseq, tools, genefilter)
 source("fun.R")
 taxLvls <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species")
 
-###################
-### BUMBLEBEE ######
-###################
-
-bumble.raw <- read.delim("data/bumblebee_data/D2_OTUcounts.txt") %>%  t 
-colnames(bumble.raw) <- bumble.raw[1,]
-bumble.otu <- bumble.raw %>% .[-1,] %>% as.data.frame %>% 
-  mutate(across(everything(), as.numeric))
-
-bumble.tax <- readxl::read_xlsx("data/bumblebee_data/D4_OTUTaxonomy.xlsx") %>% 
-  column_to_rownames("OTU_name") %>% 
-  rename_with(~ str_replace_all(., "RDP_", "")) %>% 
-  mutate(Domain = Rank1) %>% 
-  select(all_of(taxLvls)) %>% 
-  as.matrix 
-
-bumble.sam <- readxl::read_xlsx("data/bumblebee_data/D1_Metadata_Samples.xlsx") %>% 
-  column_to_rownames("unique.sample.id") %>% 
-  filter(treatment.line != 'neg.contr' & 
-           microbiota.sequenced == 'yes') %>% 
-  transmute(type = sample.type,
-            colony = colony.id,
-            treatment = case_when(treatment.line == 'sham' ~ 'Contrôles',
-                                  treatment.line == 'cocktail' ~ 'Parasités'))
-
-bumble.ps <- phyloseq(otu_table(bumble.otu, taxa_are_rows = T),
-                   sample_data(bumble.sam),
-                   tax_table(bumble.tax)) %>% 
-  # Remove contaminated sample
-  prune_samples(sample_names(.) != "996", .)  %>% 
-  # Remove taxa without any OTU across all samples
-  prune_taxa(taxa_sums(.) > 0,.) %>% 
-  # Rarefy
-  rarefy_even_depth(
-    sample.size = 13820,
-    verbose = TRUE,  
-    trimOTUs = TRUE,
-    rngseed = 4466)
-
 ##########################
 ### TENEBRIO MOLITOR ######
 ##########################
@@ -71,7 +32,50 @@ beetle.sam <- beetle.otu %>% colnames %>%
 
 beetle.ps <- phyloseq(otu_table(beetle.otu, taxa_are_rows = T),
                       sample_data(beetle.sam),
-                      tax_table(beetle.tax))
+                      tax_table(beetle.tax)) %>% 
+  depth.fun()
+
+###################
+### BUMBLEBEE ######
+###################
+
+bumble.raw <- read.delim("data/bumblebee_data/D2_OTUcounts.txt") %>%  t 
+colnames(bumble.raw) <- bumble.raw[1,]
+bumble.otu <- bumble.raw %>% .[-1,] %>% as.data.frame %>% 
+  mutate(across(everything(), as.numeric))
+
+bumble.tax <- readxl::read_xlsx("data/bumblebee_data/D4_OTUTaxonomy.xlsx") %>% 
+  column_to_rownames("OTU_name") %>% 
+  rename_with(~ str_replace_all(., "RDP_", "")) %>% 
+  mutate(Domain = Rank1) %>% 
+  select(all_of(taxLvls)) %>% 
+  as.matrix 
+
+bumble.sam <- readxl::read_xlsx("data/bumblebee_data/D1_Metadata_Samples.xlsx") %>% 
+  column_to_rownames("unique.sample.id") %>% 
+  filter(treatment.line != 'neg.contr' & 
+           microbiota.sequenced == 'yes') %>% 
+  transmute(type = case_when(sample.type == 'faeces' ~ 'Fèces',
+                             sample.type == 'gut' ~ 'Intestin'),
+            colony = as.factor(colony.id),
+            treatment = case_when(treatment.line == 'sham' ~ 'Contrôles',
+                                  treatment.line == 'cocktail' ~ 'Parasités'),
+            bee.id = as.factor(bee.id),
+            origin = as.factor(population.origin))
+
+bumble.ps <- phyloseq(otu_table(bumble.otu, taxa_are_rows = T),
+                      sample_data(bumble.sam),
+                      tax_table(bumble.tax)) %>% 
+  # Remove contaminated sample
+  prune_samples(sample_names(.) != "996", .)  %>% 
+  # Remove taxa without any OTU across all samples
+  prune_taxa(taxa_sums(.) > 0,.) %>% 
+  # Rarefy
+  rarefy_even_depth(
+    sample.size = 13820,
+    verbose = TRUE,  
+    trimOTUs = TRUE,
+    rngseed = 4466)
 
 ################
 ### PLANTS ######
@@ -93,8 +97,10 @@ plant.tax <- readRDS("data/plant_data/RDP_taxa.rds")
 plant.sam <- plant.otu %>% t %>% rownames %>% as_tibble %>% 
   separate(value, into = c("site","ID","type","replicate"), "-", remove = F) %>% 
   mutate(
-    compart = case_when(type == "IR" ~ "R",
-                        TRUE ~ type),
+    compart = case_when(type == "IR" ~ "Racines",
+                        type == 'R' ~ 'Racines',
+                        type == 'L' ~ 'Feuilles',
+                        type == 'S' ~ 'Sol'),
     IDtype = interaction(ID,type),
     IDtypesite = interaction(IDtype, site),
     ID = case_when(ID == 'I' ~ 'Parasités',
@@ -111,15 +117,13 @@ plant.ps <- phyloseq(otu_table(plant.otu, taxa_are_rows = T),
                 phy_tree(plant.tree)) %>% 
   prune_taxa(taxa_sums(.) > 0,.) %>% 
   subset_taxa(!is.na(Family) & !Class == 'Chloroplast') %>% 
-  subset_samples(site != "Undetermined" & site != "mock" & site != "PAO1" & site != "water") %>% 
-  filter_taxa(kOverA(5,A=25),TRUE)
-
+  subset_samples(site != "Undetermined" & site != "mock" & 
+                   site != "PAO1" & site != "water" & compart != 'Feuilles') %>% 
+  filter_taxa(kOverA(5,A=25),TRUE) %>% 
 # Il y a une grosse variabilité de profondeur de séquencage dans ces données,
 # on l'ajoute aux métadonnées pour pouvoir la modéliser plus tard:
-sample_data(plant.ps) %<>% merge(.,
-      data.frame(depth = colSums(plant.ps@otu_table)), 
-      by = "row.names", all = TRUE) %>% 
-  column_to_rownames("Row.names")
+  depth.fun()
+
 
 ### EXPORT
 write_rds(plant.ps, "data/ps/plant.ps.RDS")

@@ -27,7 +27,7 @@ comm_barplot(bumble.ps, 'treatment', 'Species', 8, 'Bombus terrestris', 'type',
              'Abondance relative des espèces microbiennes chez B. terrestris.')
 
 comm_barplot(beetle.ps, 'status', 'Species', 14, 'Tenebrio molitor', 'time',
-             'Abondance relative des espèces microbiennes chez T. molitor.') # ADD A FACET for time
+             'Abondance relative des espèces microbiennes chez T. molitor.')
 
 comm_barplot(plant.ps, 'ID', 'Order',14, 'Hedera','compart', 
              'Abondance relative des ordres microbiens chez Hedera spp. par compartiment.')
@@ -35,10 +35,6 @@ comm_barplot(plant.ps, 'ID', 'Order',14, 'Hedera','compart',
 ###############################################################################
 ### PCoA sur les dissimilarités Bray Curtis ###################################
 ###############################################################################
-
-######################
-### Méthode du cours #
-#######################
 dbRDA_results <- list()
 
 ### **************** ###
@@ -75,16 +71,39 @@ ggsave("out/ord_Tmolitor.png", plot = ord_Tmolitor,
         permutations=9999, method="bray") # p = 0.00001
 )
 
-## RCLR ??
+# Cette différence est-elle explicable par la profondeur de séquençage?
+ord.fun(beetle.ps)
+adonis2(beetle__bray$dist ~ depth + status, 
+        data = beetle__bray$data,
+        permutations=99999, method="bray") 
+# Il y a une proportion importante de la variance expliquée par la profondeur!
 
+# RDA conditionnelle
+(ord_beetle <- capscale(beetle__bray$dist ~ status + Condition(depth), 
+                  data = beetle__bray$data, distance = "bray"))
+
+ord_beetle_anova <- anova(ord_beetle, permutations = how(nperm=99999))
+ord_beetle_anova$R2 <- ord_beetle$CCA$tot.chi/ord_beetle$tot.chi
+dbRDA_results[["beetle_cond"]] <- ord_beetle_anova
+
+# transformation clr 
+beetle_RCLR.ps <- tax_transform(beetle.ps, "rclr")
+ord.fun(beetle_RCLR.ps, groupVar = "time", group = "2", d = "euclidean")
+ord.fun(beetle_RCLR.ps, groupVar = "time", group = "7", d = "euclidean")
+adonis2(beetle_RCLR_time2_euclidean$dist ~ status + depth, 
+        data = beetle_RCLR_time2_euclidean$data,
+        permutations=99999, method="euclidean")
+adonis2(beetle_RCLR_time7_euclidean$dist ~ status + depth, 
+        data = beetle_RCLR_time7_euclidean$data,
+        permutations=99999, method="euclidean")
 
 ### ***************** ###
 ### BOMBUS TERRESTRIS ###
 ### ***************** ###
 
 # PLOTTING BY TIME
-ord.fun(bumble.ps, groupVar = "type", group = "faeces")
-ord.fun(bumble.ps, groupVar = "type", group = "gut")
+ord.fun(bumble.ps, groupVar = "type", group = "Fèces")
+ord.fun(bumble.ps, groupVar = "type", group = "Intestin")
 ord.fun(bumble.ps)
 
 bumble.p1 <- plot_PCoA(bumble_typefaeces_bray, group = "treatment", title = 'Jour 0') 
@@ -115,64 +134,60 @@ ggsave("out/ord_Bterrestris.png", plot = ord_Bterrestris,
 )# Rien !
 
 # PLOTTING BY COMPARTMENT
-bumble.col2 <- c("faeces" = "darkkhaki", "gut" = "orangered")
+bumble.col2 <- c("Fèces" = "darkkhaki", "Intestin" = "orangered")
 bumble.p3 <- plot_PCoA(bumble__bray, group = "type") 
 ord_Bterrestris_compart <- bumble.p3 +
   plot_annotation(title = "Comparaison des compartiments chez le bourdon.") &
   theme_light(base_family = "Baskerville", base_size = 26) &
   theme(plot.title = element_text(size = 32)) &
   theme(legend.position = 'bottom') &
-  scale_colour_manual(values = bumble.col2,
-                      labels = c("faeces" = "Fèces", "gut" = "Intestin")) &
+  scale_colour_manual(values = bumble.col2) &
   scale_fill_manual(values = bumble.col2) &
   labs(colour = "Compartiment") 
 
 ggsave("out/ord_Bterrestris_compart.png", plot = ord_Bterrestris_compart, 
        width = 27, height = 27, units = 'cm')
 
-# REDUNDANCY ANALYSIS
-# Restreindre les permutations par colonie
-(dbRDA_results[["Bterrestris_compart"]] <- 
-  adonis2(bumble__bray$dist ~ type + treatment, 
-        data = bumble__bray$data,
-        permutations=9999, method="bray") # p = 0.0001 
-)
-# Se concentrer sur la différence entre gut et feces; si différence, 
-# souligner l'impact potentiel sur les analyses réalisées par les auteurs
-# Interesting!
+ord_beeID <- capscale(bumble__bray$dist ~ type,
+                  data = bumble__bray$data)
+
+anova_beeID <- anova(ord_beeID, permutations = how(nperm=9999))
+anova_beeID$R2 <- ord_beeID$CCA$tot.chi/ord_beeID$tot.chi
+(dbRDA_results[["Bterrestris_compart"]] <- anova_beeID)
 
 ### ********** ###
 ### HEDERA SPP ###
 ### ********** ###
 
 # PLOTTING BY COMPARTMENT
-ord.fun(plant.ps, groupVar = "compart", group = "L")
-ord.fun(plant.ps, groupVar = "compart", group = "R")
-ord.fun(plant.ps, groupVar = "compart", group = "S")
+# ord.fun(plant.ps, groupVar = "compart", group = "L")
+ord.fun(plant.ps, groupVar = "compart", group = "Racines")
+ord.fun(plant.ps, groupVar = "compart", group = "Sol")
 
-plant.p1 <- plot_PCoA(plant_compartL_bray, group = "ID", title = 'Feuilles') 
+#plant.p1 <- plot_PCoA(plant_compartL_bray, group = "ID", title = 'Feuilles') 
 plant.p2 <- plot_PCoA(plant_compartR_bray, group = "ID", title = 'Racines') 
 plant.p3 <- plot_PCoA(plant_compartS_bray, group = "ID", title = 'Sol') 
 
 plant.col <- c("Parasités" = "orangered", "Non-parasités" = "darkolivegreen3")
-ord_Hedera <- customPatchwork(plant.p1 + plant.p2 + plant.p3) &
+ord_Hedera <- customPatchwork(plant.p2 + plant.p3) &
   plot_annotation(title = "Microbiote de Hedera en présence ou absence de Orobranche hederae.") &
   scale_colour_manual(values = plant.col) &
   scale_fill_manual(values = plant.col) &
   labs(colour = "Statut") 
 
 ggsave("out/ord_Hedera.png", plot = ord_Hedera, 
-       width = 50, height = 23, units = 'cm')
+       width = 48, height = 27, units = 'cm')
 
 # REDUNDANCY ANALYSIS
-# Leaves
-(dbRDA_results[["Hedera_L"]] <- 
-  adonis2(plant_compartL_bray$dist ~ ID, 
-          data = plant_compartL_bray$data,
-          permutations=99999, method="bray") # p = 0.77
-)
 
 # Racines
+ord_R <- capscale(plant_compartR_bray$dist ~ ID, 
+                       data = plant_compartR_bray$data)
+
+anova_R <- anova(ord_R, permutations = how(nperm=99999))
+anova_R$R2 <- ord_R$CCA$tot.chi/ord_R$tot.chi
+dbRDA_results[["Hedera_R"]] <- anova_R
+
 (dbRDA_results[["Hedera_R"]] <- 
   adonis2(plant_compartR_bray$dist ~ ID, 
           data = plant_compartR_bray$data,
@@ -187,57 +202,50 @@ ggsave("out/ord_Hedera.png", plot = ord_Hedera,
 )
 
 # Cependant, il y a une énorme variabilité d'un réplicata à l'autre:
-depth.plot <- ggplot(plant.ps@sam_data, aes(x = compart, y = depth, fill = ID)) +
-  geom_boxplot() + 
-  theme_light(base_family = "Baskerville", base_size = 26) +
+depthBox.plot <- ggplot(plant.ps@sam_data %>% data.frame %>% filter(compart != 'L'), 
+                     aes(x = compart, y = depth, fill = ID)) +
+  geom_boxplot() +
   labs(fill = "Compartiment", x = "",
-       y = "Nombre de séquences totales par échantillon",
-       title = "Profondeur de séquençage par compartiment.") +
+       y = "Nombre de séquences",
+       title = "A. Profondeur de séquençage des échantillons.") +
   scale_fill_manual(values = plant.col) +
-  scale_x_discrete(labels = c("L" = "Feuilles", "R" = "Racines", "S" = "Sol"))
+  scale_x_discrete(labels = c("L" = "Feuilles", "R" = "Racines", "S" = "Sol")) +
+  scale_y_continuous(limits = c(0, NA))
 
-ggsave("out/depth_boxplot.png", plot = depth.plot, 
-       width = 50, height = 30, units = 'cm')
+depthPCoA.plot <- plot_PCoA(plant_compartS_bray, group = "depth_log", ellipse = FALSE) +
+  labs(colour = "Profondeur de \nséquençage (log)",
+       title = 'B. Dissimilarité Bray-Curtis des échantillons du sol.') +
+  theme(plot.title = element_text(size = 32, hjust = 0.5)) 
 
-# Est-ce ce que l'ordination capture en fait la différence de profondeur de séquençage?
-# Vérifions avec les échantillons Racines et Sol, qui semblent avoir une profondeur
-# différente entre les parasités et contrôles?
-plot_PCoA(plant_compartS_bray, group = "depth", ellipse = FALSE) 
-plot_PCoA(plant_compartR_bray, group = "depth", ellipse = FALSE) 
+depth.plot <- depthBox.plot + depthPCoA.plot &
+  theme_light(base_family = "Baskerville", base_size = 20) &
+  theme(plot.title = element_text(size = 24)) &
+  theme(legend.position = 'bottom')
+  
+ggsave("out/depth_plots.png", plot = depth.plot, 
+       width = 48, height = 27, units = 'cm')
 
-(dbRDA_results[["Hedera_S_depth"]] <- 
-  adonis2(plant_compartS_bray$dist ~ depth, 
+adonis2(plant_compartS_bray$dist ~ ID + depth, 
         data = plant_compartS_bray$data,
-        permutations=99999, method="bray") # p = 0.016
-  )
+        permutations=99999, method="bray") 
 
 #### dbRDA conditionnelle 
-
 # RACINES
-ord_R <- capscale(plant_compartR_bray$dist ~ ID + Condition(depth), 
+ord_R_cond <- capscale(plant_compartR_bray$dist ~ ID + Condition(depth), 
                   data = plant_compartR_bray$data)
 
-ord_R_anova <- anova(ord_R, permutations = how(nperm=99999))
-ord_R_anova$R2 <- ord_R$CCA$tot.chi/ord_R$tot.chi
-dbRDA_results[["Hedera_R_cond"]] <- ord_R_anova
+anova_R_cond <- anova(ord_R_cond, permutations = how(nperm=99999))
+anova_R_cond$R2 <- ord_R_cond$CCA$tot.chi/ord_R_cond$tot.chi
+(dbRDA_results[["Hedera_R_cond"]] <- anova_R_cond)
 
 # SOL
-ord_S <- capscale(plant_compartS_bray$dist ~ ID + Condition(depth), 
+ord_S_cond <- capscale(plant_compartS_bray$dist ~ ID + Condition(depth), 
                 data = plant_compartS_bray$data)
 
-ord_S_anova <- anova(ord_S, permutations = how(nperm=99999))
-ord_S_anova$R2 <- ord_S$CCA$tot.chi/ord_S$tot.chi
-dbRDA_results[["Hedera_S_cond"]] <- ord_S_anova
+anova_S_cond <- anova(ord_S_cond, permutations = how(nperm=99999))
+anova_S_cond$R2 <- ord_S_cond$CCA$tot.chi/ord_S_cond$tot.chi
+(dbRDA_results[["Hedera_S_cond"]] <- anova_S_cond)
 
-# Fooling around
-ord.fun(plant.ps)
-
-capscale(plant__bray$dist ~ ID + Condition(depth) + type + IDtypesite, 
-         data = plant__bray$data) %>% 
-  anova(permutations = how(nperm=9999))
-
-adonis2(plant__bray$dist ~ ID + depth + type + IDtypesite,
-        data = plant__bray$data, permutations = 9999)
 ############################
 ### COMPILE RESULTS ########
 ############################
@@ -259,10 +267,10 @@ do.call(rbind, results) %>%
                        p<0.01 ~ '**',
                        p<0.05 ~ '*',
                        TRUE ~''),
-         R2 = round(R2, 2), 
+         R2 = round(R2, 4), 
          p = round(p, 4)) %>%  # Round values to two significant digits
   kable(caption = "Résultats des tests de permutations par analyses de redondance basée sur les distances.") %>% 
-  kable_styling(bootstrap_options = "striped", full_width = F)
+  kable_styling(bootstrap_options = "striped", full_width = F) %>% return
 
 
 # Est-ce qu'une méthode mieux adaptée permettrait de comparer les échantillons
@@ -289,49 +297,25 @@ adonis2(plantRCLR__euclidean$dist ~ ID*compart + depth,
         data = plantRCLR__euclidean$data,
         permutations=rest_perm2, method="euclidean") # p = 0.016
 
+##### PROFONDEUR DE SÉQUENCAGe et T. molitor jour 7
 
-####################################################################################
+ggplot(beetle.ps@sam_data %>% data.frame, 
+                        aes(x = time, y = depth, fill = status)) +
+  geom_boxplot() + theme_minimal() +
+  labs(fill = "Compartiment", x = "",
+       y = "Nombre de séquences totales.",
+       title = "Profondeur de séquençage des échantillons T. molitor.") +
+  scale_y_continuous(limits = c(0, NA))
 
+plot_PCoA(beetle_time7_bray, group = "depth_log", ellipse = FALSE) +
+  labs(colour = "Profondeur de \nséquençage (log)",
+       title = 'Dissimilarité Bray-Curtis des échantillons du jour 7.') +
+  theme(plot.title = element_text(size = 32, hjust = 0.5)) 
 
+### RDA partielle
+ord_7_cond <- capscale(beetle_time7_bray$dist ~ status + Condition(depth), 
+                       data = beetle_time7_bray$data)
 
-
-##########################################
-### Méthode du lab ########################
-### Variance stabilizing transformation ###
-##########################################
-
-vst.fun(beetle.ps, groupVar = "time", group = "2", group = "status")
-vst.fun(beetle.ps, groupVar = "time", group = "7", group = "status")
-vst.fun(beetle.ps, group = "cohort")
-# flagrant
-
-vst.fun(bumble.ps, groupVar = "type", group = "faeces", group = "treatment")
-vst.fun(bumble.ps, groupVar = "type", group = "gut", group = "treatment")
-vst.fun(bumble.ps, groupVar = "treatment", group = "sham",  group = "type") # faeces vs gut seulement
-      # À reessayer avec CLR! 
-# Énorme différence entre gut et faeces
-vst.fun(bumble.ps, group = "treatment") # traitement seulement
-
-vst.fun(plant.ps, groupVar = "type", group = "L", group = "ID")
-vst.fun(plant.ps, groupVar = "type", group = "R", group = "ID")
-vst.fun(plant.ps, groupVar = "type", group = "S", group = "ID")
-
-# Très peu de samples par groupe, essayons tous ensemble:
-vst.fun(plant.ps, group = "ID")
-# Patron similaire à l'approche capscale
-
-
-### TOUTES
-# Sensibilité du test stat à un contrôle sur la profondeur de séquençage
-
-#### Hedera 
-# Ordination Roots (avec IR), une Leaf
-# Une comparaison avec Unifrac?? Attendre
-# Modèle à effets mixtes avec réplicats?
-
-#### Tenebrio
-# Une ordination pour chaque temps 
-
-#### Bommus
-# Une ordination par compartiment +
-# Une comparaison Sham avec CLR (à moins que ce soit celui-ci qui )
+anova_7_cond <- anova(ord_7_cond, permutations = how(nperm=99999))
+anova_7_cond$R2 <- ord_7_cond$CCA$tot.chi/ord_7_cond$tot.chi
+(dbRDA_results[["Tmolitor_7_cond"]] <- anova_7_cond)

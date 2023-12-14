@@ -115,13 +115,13 @@ ord.fun <- function(ps, groupVar = FALSE, group = FALSE, d = "bray") {
   
   # Calculer les PCoA
   PCoA <- dist.mx %>%
-    wcmdscale(k = 2, eig = T, add = "lingoes")
+    wcmdscale(eig = T, add = "lingoes")
   
   # Plot data
   plot.df <- data.frame(PCOA1 = PCoA %>% scores %>% .[,1], 
              PCOA2 = PCoA %>% scores %>% .[,2]) %>%
     cbind(subset.ps %>% sample_data %>% data.frame)
-  
+
   # Utiliser le nom de l'object PS pour extraire le nom du jeu de données
   set <- match.call()[["ps"]] %>% deparse %>% str_remove(".ps")
   
@@ -157,7 +157,8 @@ vst.fun <- function(ps, groupVar = FALSE, group = FALSE) {
 
 # Générer une liste contenant la matrice de distances, les eigenvalues et 
 # le jeu de données avec les composantes calculées (servira pour les plots)
-exportList.fun <- function(set, groupVar, group, dist.mx, eig, plot.df, method){
+exportList.fun <- function(set, groupVar, group, dist.mx, eig, 
+                           plot.df, method){
   if(group==FALSE) {group=""}
   if(groupVar==FALSE) {groupVar=""}
   
@@ -169,4 +170,15 @@ exportList.fun <- function(set, groupVar, group, dist.mx, eig, plot.df, method){
               eig = eig,
               data = plot.df),
          envir = .GlobalEnv)
+}
+
+
+### Add depth to metadata
+depth.fun <- function(ps) {
+  sample_data(ps) %<>% merge(.,
+        data.frame(depth = colSums(ps@otu_table)), 
+        by = "row.names", all = TRUE) %>% 
+    mutate(depth_log = log10(depth)) %>% 
+    column_to_rownames("Row.names")
+  return(ps)
 }
